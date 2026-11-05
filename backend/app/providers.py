@@ -25,6 +25,18 @@ class RegionProvider:
         request = client.build_request("POST", url, content=body, headers=forwarded)
         return await client.send(request, stream=stream)
 
+    def request_sync(self, client: httpx.Client, path: str, token: str, body: bytes,
+                     headers: dict[str, str], stream: bool = False):
+        url = f"{self.origin}/mavis/api/v1/llm{path}"
+        forwarded = {k: v for k, v in headers.items() if k.lower() in {"content-type", "accept", "anthropic-version", "anthropic-beta"}}
+        forwarded["Authorization"] = f"Bearer {token}"
+        forwarded["User-Agent"] = "MiniMaxAgent"
+        forwarded["X-Mavis-Session-Id"] = str(uuid.uuid4())
+        forwarded["X-Mavis-Agent-Id"] = "main"
+        forwarded["X-Mavis-Timezone-Offset"] = "0"
+        outgoing = client.build_request("POST", url, content=body, headers=forwarded)
+        return client.send(outgoing, stream=stream)
+
 
 PROVIDERS = {
     "cn": RegionProvider("cn", "https://agent.minimax.cn"),

@@ -41,7 +41,7 @@ python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 ```bash
 alembic upgrade head
-uvicorn app.main:app --host 127.0.0.1 --port 8045
+gunicorn --bind 127.0.0.1:8045 'app.main:app'
 ```
 
 SQLite 文件的父目录会在连接时创建。生产环境使用 MySQL 时，应先安装对应数据库驱动，并针对实际数据库运行迁移和备份恢复测试；仓库没有提供生产容器编排或数据库运维配置。
@@ -54,7 +54,7 @@ npm ci
 npm run dev
 ```
 
-前端 API client 的服务地址可通过构建期 `NEXT_PUBLIC_API_BASE_URL` 指定，默认 `http://127.0.0.1:8045`。浏览器跨域访问后端时需要由部署层配置 CORS 或同源反向代理；当前 FastAPI 应用没有配置 CORS 中间件。
+前端 API client 的服务地址可通过构建期 `NEXT_PUBLIC_API_BASE_URL` 指定，默认 `http://127.0.0.1:8045`。浏览器跨域访问后端时需要由部署层配置 CORS 或同源反向代理；当前 Flask 应用没有配置 CORS。
 
 管理 Token 不可放入 `NEXT_PUBLIC_*` 变量。前端目前仍以 mock 数据渲染为主，配置 API base URL 本身不会自动切换所有页面到真实后端。
 

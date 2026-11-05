@@ -1,6 +1,6 @@
 # MiniMax Code2API 后端
 
-FastAPI 模块化单体后端。要求 Python 3.11+。从仓库根目录查看[项目说明](../README.md)，完整接口契约见[后端 API 文档](../docs/api.md)，部署和密钥配置见[部署文档](../docs/deployment.md)。
+Flask 模块化单体后端。要求 Python 3.11+。从仓库根目录查看[项目说明](../README.md)，完整接口契约见[后端 API 文档](../docs/api.md)，部署和密钥配置见[部署文档](../docs/deployment.md)。
 
 ## 本地启动
 
@@ -13,10 +13,10 @@ cp .env.example .env
 python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
 # 将生成值写入 ENCRYPTION_KEY，并设置高熵 ADMIN_TOKEN。
 alembic upgrade head
-uvicorn app.main:app --host 127.0.0.1 --port 8045
+flask --app app.main:app run --host 127.0.0.1 --port 8045
 ```
 
-Swagger 位于 `/docs`。管理端使用 `Authorization: Bearer $ADMIN_TOKEN`；网关使用创建的 API Key。使用 `x-minimax-region: cn|global` 选择隔离的账号区域。服务默认应保持仅本机可访问；外部部署必须使用 TLS 和访问控制。
+生产环境可用 `gunicorn --bind 127.0.0.1:8045 'app.main:app'` 启动。管理端使用 `Authorization: Bearer $ADMIN_TOKEN`；网关使用创建的 API Key。使用 `x-minimax-region: cn|global` 选择隔离的账号区域。服务默认应保持仅本机可访问；外部部署必须使用 TLS 和访问控制。
 
 ## 当前实现与限制
 

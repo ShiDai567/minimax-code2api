@@ -1,6 +1,6 @@
 # MiniMax Code2API
 
-MiniMax Code 国内版与国际版账号管理及协议网关。仓库包含 Next.js 管理界面和 FastAPI 后端；当前项目仍在开发中，前端页面主要使用本地 mock 数据，尚未完成与后端的逐页联调。
+MiniMax Code 国内版与国际版账号管理及协议网关。仓库包含 Next.js 管理界面和 Flask 后端；当前项目仍在开发中，前端页面主要使用本地 mock 数据，尚未完成与后端的逐页联调。
 
 ## 功能与状态
 
@@ -22,7 +22,7 @@ MiniMax Code 国内版与国际版账号管理及协议网关。仓库包含 Nex
 ## 仓库结构
 
 - `frontend/`：Next.js 16 App Router、React 19、TypeScript、Tailwind CSS v4 管理界面。
-- `backend/`：FastAPI、SQLAlchemy、SQLite/MySQL 兼容的数据层、Alembic 迁移及上游 provider。
+- `backend/`：Flask 模块化 API、SQLAlchemy、SQLite/MySQL 兼容的数据层、Alembic 迁移及上游 provider。
 - `docs/`：API、部署和安全说明。
 - `AGENTS.md`：仓库开发约束及领域规则。
 
@@ -50,10 +50,10 @@ python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 ```bash
 alembic upgrade head
-uvicorn app.main:app --host 127.0.0.1 --port 8045 --reload
+flask --app app.main:app run --host 127.0.0.1 --port 8045 --debug
 ```
 
-健康检查为 `http://127.0.0.1:8045/health`，交互式 API 文档为 `http://127.0.0.1:8045/docs`。管理端请求使用 `Authorization: Bearer $ADMIN_TOKEN`；网关请求使用管理界面创建的 API Key。
+健康检查为 `http://127.0.0.1:8045/health`。管理端请求使用 `Authorization: Bearer $ADMIN_TOKEN`；网关请求使用管理界面创建的 API Key。
 
 ### 前端
 
