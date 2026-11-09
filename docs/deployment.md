@@ -1,81 +1,43 @@
 # 部署与配置
 
-## 环境要求
+后端要求 Python 3.12+。前端独立运行，仍使用 mock 数据。上游尚未真实验证，此服务不应直接暴露公网或用作生产系统。
 
-- Python 3.11+
-- Node.js 与 npm，版本以 `frontend/package.json` 和 lockfile 为准
-- SQLite（默认）或受支持的 SQLAlchemy MySQL 驱动/连接串配置
-
-## 后端配置
-
-从 `backend/` 执行命令。先安装依赖并复制配置：
-
-```bash
+```sh
+cd backend
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-```
-
-配置项：
-
-| 变量 | 用途 | 默认/要求 |
-| --- | --- | --- |
-| `DATABASE_URL` | SQLAlchemy 数据库连接 | `sqlite:///./data/code2api.db` |
-| `ADMIN_TOKEN` | 所有管理 API 的 Bearer Token | 必须设置为高熵随机值 |
-| `ENCRYPTION_KEY` | Fernet 账号凭证加密密钥 | 必须设置；使用 Fernet URL-safe base64 key |
-| `HOST` | 文档配置项 | `127.0.0.1`；启动命令需显式引用 |
-| `PORT` | 文档配置项 | `8045`；启动命令需显式引用 |
-| `UPSTREAM_TIMEOUT_SECONDS` | 网关上游请求超时 | `300` |
-| `DEFAULT_MODEL` | 预留默认模型配置 | 当前未用于模型发现/映射 |
-
-生成加密密钥：
-
-```bash
 python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
 ```
 
-`ENCRYPTION_KEY` 丢失或轮换后，旧账号凭证无法解密。请通过受控密钥管理系统备份，并制定显式的重新加密迁移流程；不要在已有数据上直接换 key。
+在 `.env` 中设置随机的 `ADMIN_TOKEN`（至少 32 字符）及生成的 `ENCRYPTION_KEY`。Flask CLI 通过 python-dotenv 加载 `.env`；Gunicorn 等启动方式应由进程管理器显式提供环境变量。妥善备份加密密钥，丢失或直接替换会导致已有凭证无法解密。
 
-数据库迁移和启动：
-
-```bash
-alembic upgrade head
-gunicorn --bind 127.0.0.1:8045 'app.main:app'
+```sh
+flask --app wsgi db upgrade
+flask --app wsgi run --host 127.0.0.1 --port 8045
 ```
 
-SQLite 文件的父目录会在连接时创建。生产环境使用 MySQL 时，应先安装对应数据库驱动，并针对实际数据库运行迁移和备份恢复测试；仓库没有提供生产容器编排或数据库运维配置。
+批量/定时签到需要在另一个进程启动 `flask --app wsgi worker`。支持 `--once` 处理最多一个任务，`--interval 10` 设置空闲轮询秒数。进程停止时不执行任务；启动后会恢复到期租约。任务按数据库防重，计划使用设置中的 IANA 时区；worker 应由进程管理器监控。上游请求默认超时 30 秒，任务租约 5 分钟。SQLite 适合单机；其他数据库需自行安装驱动并验证迁移、并发和备份恢复。
 
-## 前端配置
+| 环境变量 | 说明 |
+| --- | --- |
+| `DATABASE_URL` | SQLAlchemy URL，默认 `sqlite:///code2api.db`，相对 Flask instance 目录 |
+| `ADMIN_TOKEN` | 高熵管理口令，至少 32 字符 |
+| `ENCRYPTION_KEY` | Fernet 密钥 |
+| `MCODE_APP_VERSION` | 签到请求客户端版本标记，默认 `0.1.0`；上游可能要求其他版本 |
+| `BALANCE_ADAPTERS` | 可选 JSON；按区域定义已验证 HTTPS URL、数值字段路径和单位 |
+| `MODEL_DISCOVERY_URLS` | 可选 JSON；按区域定义兼容 OpenAI `data` 数组的已验证 HTTPS 模型 URL |
 
-```bash
-cd frontend
-npm ci
-npm run dev
+可选适配器配置示例（必须替换为经过验证的可信 URL，服务会向其发送相应区域账号凭证）：
+
+```sh
+BALANCE_ADAPTERS='{"cn":{"url":"https://trusted.example/plan","field":"data.remaining","unit":"tokens"}}'
+MODEL_DISCOVERY_URLS='{"cn":"https://trusted.example/v1/models"}'
 ```
 
-前端 API client 的服务地址可通过构建期 `NEXT_PUBLIC_API_BASE_URL` 指定，默认 `http://127.0.0.1:8045`。浏览器跨域访问后端时需要由部署层配置 CORS 或同源反向代理；当前 Flask 应用没有配置 CORS。
+不要使用不受信任的目标或明文 HTTP。适配器目标由部署者控制，禁用 HTTP 重定向和代理环境变量；返回数值仍只是上游报告的计划快照，不自动成为钱包余额。API 不提供桌面端本地 auth-lease broker，需由操作者提供获得授权的兼容 token。
 
-管理 Token 不可放入 `NEXT_PUBLIC_*` 变量。前端目前仍以 mock 数据渲染为主，配置 API base URL 本身不会自动切换所有页面到真实后端。
+上线前应在隔离环境中针对每个区域验证真实签到、模型和网关行为；通过 TLS、访问控制、密钥管理、备份、限流和审计保护管理 API。当前无 CORS，建议同源反向代理。不要将管理 Token 放入浏览器或 `NEXT_PUBLIC_*` 变量。当前前端 API client 与后端尚未完成完整集成。
 
-## 运行和升级
-
-- `/health` 可用于进程级探测，不代表上游凭证可用或模型网关已具备健康账号。
-- 每次升级前备份数据库和加密密钥；部署新代码前执行 `alembic upgrade head`。
-- 默认监听 localhost。外部访问应置于认证反向代理/TLS 后，并限制管理 API 网络访问。
-- 上游 MiniMax Code 接口可能变化；上线前应针对每个区域使用授权账号做签到、余额和 Anthropic 请求验证。
-
-## 本地检查
-
-```bash
-cd backend
-.venv/bin/python -m pytest -q
-.venv/bin/python -m compileall -q app tests migrations
-```
-
-```bash
-cd frontend
-npm run lint
-npx tsc --noEmit
-npm run build
-```
+验证：`python -m pytest -q` 和 `python -m compileall -q app tests migrations`。

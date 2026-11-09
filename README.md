@@ -1,5 +1,7 @@
 # MiniMax Code2API
 
+> **开发状态更新：** 后端具备账号、分组、密钥、签到任务和有限协议网关；上游尚未使用真实凭证验证，前端仍为模拟页面。具体能力与限制请以 [后端开发状态](backend/README.md) 为准。
+
 MiniMax Code 国内版与国际版账号管理及协议网关。仓库包含 Next.js 管理界面和 Flask 后端；当前项目仍在开发中，前端页面主要使用本地 mock 数据，尚未完成与后端的逐页联调。
 
 ## 功能与状态
@@ -10,14 +12,14 @@ MiniMax Code 国内版与国际版账号管理及协议网关。仓库包含 Nex
 | 账号凭证 | Fernet 加密后存储；列表只返回脱敏值 |
 | API Key | 仅创建成功时返回明文；数据库仅存 SHA-256 摘要 |
 | Anthropic Messages 网关 | 后端转发及 SSE 流式响应已实现；需要已验证且健康的账号 |
-| OpenAI Chat Completions / Responses | 暂未实现，返回 HTTP 501 |
-| 模型发现 (`GET /v1/models`) | 暂无已验证上游适配器，返回 HTTP 501 |
-| 手动签到 | 有上游状态/领取实现；需要兼容 Bearer token 和 `real_user_id` |
-| Token Plan 余额同步 | 尝试读取上游余额快照；不代表 API 消耗，也不保证为通用钱包余额 |
-| 自动/批量签到、定时任务 | 暂未实现 |
+| OpenAI Chat Completions / Responses | 仅纯文本非流式转换；其他输入明确拒绝 |
+| 模型发现 (`GET /v1/models`) | 需管理员配置已验证的区域模型列表 URL；默认返回 HTTP 501 |
+| 手动签到 | 根据官方 CLI 协议实现；需要兼容 Bearer token 和 `real_user_id`，尚未实测 |
+| Token Plan 余额同步 | 需配置已验证的区域适配器；快照不代表 API 消耗或通用钱包余额 |
+| 自动/批量签到、定时任务 | 数据库任务队列与独立 worker 已实现；需要另外运行 worker |
 | 前端到后端联调 | API client 已创建，页面仍主要读取 mock 数据 |
 
-签到成功不代表积分已到账。签到返回的奖励只按上游响应记录为 `reported`，余额快照单独对账；网关请求消耗不会伪装成上游实际扣款。
+签到成功不代表积分已到账。签到返回的奖励只按上游响应记录为 `reported`；配置的计划快照不构成积分到账对账，网关请求消耗不会伪装成上游实际扣款。
 
 ## 仓库结构
 
@@ -30,7 +32,7 @@ MiniMax Code 国内版与国际版账号管理及协议网关。仓库包含 Nex
 
 ### 后端
 
-要求 Python 3.11 或更高版本。
+要求 Python 3.12 或更高版本。
 
 ```bash
 cd backend
@@ -49,11 +51,13 @@ python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 将生成值写入 `backend/.env` 的 `ENCRYPTION_KEY`，同时设置高熵 `ADMIN_TOKEN`。然后初始化数据库并启动：
 
 ```bash
-alembic upgrade head
-flask --app app.main:app run --host 127.0.0.1 --port 8045 --debug
+flask --app wsgi db upgrade
+flask --app wsgi run --host 127.0.0.1 --port 8045
 ```
 
 健康检查为 `http://127.0.0.1:8045/health`。管理端请求使用 `Authorization: Bearer $ADMIN_TOKEN`；网关请求使用管理界面创建的 API Key。
+
+自动签到和批量任务需要另开一个终端运行 `flask --app wsgi worker`，配置细节和限制见 [部署说明](docs/deployment.md)。
 
 ### 前端
 

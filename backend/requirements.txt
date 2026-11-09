@@ -1,0 +1,8 @@
+Flask>=3.1,<4
+Flask-SQLAlchemy>=3.1,<4
+Flask-Migrate>=4,<5
+cryptography>=44,<47
+pytest>=8,<10
+httpx>=0.28,<1
+gunicorn>=23,<27
+python-dotenv>=1.1,<2

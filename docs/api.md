@@ -1,80 +1,64 @@
 # 后端 API 与数据语义
 
-默认后端地址为 `http://127.0.0.1:8045`。除 `/health` 和网关端点外，管理 API 使用：
+管理接口使用 `Authorization: Bearer <ADMIN_TOKEN>`；网关使用管理接口创建的 API Key（Bearer 或 Anthropic `x-api-key`）。`/health` 不需要认证。管理响应包含 `success`、`data`、`source: "live"`，字典字段也出现在顶层；错误含 `detail` 和 `error.code`。`live` 仅表示来自本地数据库，不表示已与上游核对。
 
-```http
-Authorization: Bearer <ADMIN_TOKEN>
-```
+除仪表盘汇总外，账号、分组、签到、积分和请求日志列表必须用 `region=cn` 或 `region=global` 筛选。列表支持 `limit`（1–500）、`offset`、`sort` 和 `order=asc|desc`；账号/分组/密钥/日志支持 `search`，账号支持 `enabled`、`health`、`group_id`，签到和日志支持 `status`，日志支持 `protocol`。排序字段以接口报错提示和实现为准。
 
-网关端点使用已创建的 `sk-m2a-...` API Key。国内版标识为 `cn`，国际版为 `global`；账号和分组不可跨区域关联。网关区域通过 `x-minimax-region: cn|global` 选择，省略时默认为 `cn`。
-
-## 管理 API
+## 管理接口
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/health` | 无管理认证的进程健康状态和粗粒度能力标记 |
-| `GET` | `/api/v1/capabilities` | 能力标记；目前签到/积分/控制项不代表已全量实现 |
-| `GET` | `/api/v1/accounts?region=cn` | 列出账号，可按区域筛选 |
-| `POST` | `/api/v1/accounts` | 创建账号 |
-| `PATCH` | `/api/v1/accounts/{id}` | 修改账号资料、凭证、分组、启用状态 |
-| `DELETE` | `/api/v1/accounts/{id}` | 删除账号；被账本或签到记录引用时数据库会拒绝删除 |
-| `POST` | `/api/v1/accounts/bulk-delete` | 批量删除，JSON body 为整数 ID 数组 |
-| `GET` | `/api/v1/groups?region=cn` | 列出分组 |
-| `POST` | `/api/v1/groups` | 创建区域分组 |
-| `GET` | `/api/v1/keys` | 列出 API Key 元信息，不返回明文密钥 |
-| `POST` | `/api/v1/keys` | 创建 API Key，明文只在此响应中返回一次 |
-| `PATCH` | `/api/v1/keys/{id}?enabled=false` | 启用/停用 API Key |
-| `DELETE` | `/api/v1/keys/{id}` | 删除 API Key |
-| `GET` | `/api/v1/logs?limit=50&offset=0` | 分页读取最近请求日志，limit 上限 500 |
-| `GET` | `/api/v1/credits` | 读取最近 500 条积分/余额流水 |
-| `GET` | `/api/v1/dashboard` | 当前持久化数据的概览；部分无来源指标为 `null` |
-| `POST` | `/api/v1/checkin/run?account_id={id}` | 对单个账号执行一次签到尝试 |
-| `POST` | `/api/v1/accounts/{id}/balance-sync` | 请求上游 Token Plan remains 并记录识别到的余额快照 |
+| GET | `/api/v1/capabilities` | 服务能力，部分能力默认关闭 |
+| GET, POST | `/api/v1/accounts` | 按区域查询、创建账号 |
+| GET, PATCH, DELETE | `/api/v1/accounts/{id}` | 账号详情、修改、删除 |
+| POST | `/api/v1/accounts/bulk-delete` | JSON `{ "region": "cn", "account_ids": [1] }`，原子删除 |
+| GET, POST | `/api/v1/groups` | 区域分组列表和创建 |
+| PATCH, DELETE | `/api/v1/groups/{id}` | 更新、删除分组 |
+| GET, POST | `/api/v1/keys` | 密钥列表、创建；`/api-keys` 为兼容别名 |
+| PATCH, DELETE | `/api/v1/keys/{id}` | 更新、停用、删除 |
+| POST | `/api/v1/accounts/{id}/verify-model` | JSON `{ "model": "..." }`，调用上游 count_tokens 验证 |
+| POST | `/api/v1/accounts/{id}/balance-sync` | 使用已配置适配器采集上游计划快照，默认 501 |
+| POST | `/api/v1/checkin/run?account_id={id}` | 单账号手动签到 |
+| GET | `/api/v1/checkins?region=cn` | 签到记录 |
+| GET, POST | `/api/v1/checkin/jobs` | 批量签到任务列表及创建 |
+| GET | `/api/v1/checkin/jobs/{id}` | 任务进度及逐账号结果 |
+| GET | `/api/v1/credits?region=cn` | 已确认的账本流水；当前无上游到账/扣费适配器 |
+| GET | `/api/v1/logs?region=cn` | 脱敏请求日志 |
+| GET | `/api/v1/logs/{id}` | 日志详情 |
+| GET | `/api/v1/dashboard` | 本地跨区域汇总；无来源余额/消耗为 `null` |
+| GET, PATCH | `/api/v1/settings` | 定时签到设置 |
+| GET | `/api/v1/runtime` | 进程、数据库、任务和能力状态 |
 
 创建账号示例：
 
 ```json
-{
-  "region": "global",
-  "name": "Global account",
-  "identifier": "operator@example.test",
-  "credential": "<compatible-bearer-token>",
-  "real_user_id": "<upstream-user-id>",
-  "group_id": null,
-  "note": ""
-}
+{"region":"cn","name":"Account","identifier":"operator@example.test","credential":"<token>","real_user_id":"<user-id>","group_id":null,"note":""}
 ```
 
-`real_user_id` 仅用于上游 MCode 签到签名请求，可为空；未提供时签到端点返回 422。创建账号响应只返回脱敏凭证。账号新建后的 `health` 为 `unknown`，不会自动视为可用或自动进入网关路由池。
+账号新建及替换凭证后为 `unknown`，调用验证接口后才可能变为 `healthy`。验证需要调用方提供上游支持的模型；模型不会硬编码。停用账号不会执行签到或承载网关请求。账号或密钥有历史引用时删除返回 409，保留审计历史。
 
-## 网关 API
+批量任务创建示例：`{"region":"cn","account_ids":[1,2]}`。需运行独立 worker；任务状态和每项成功、失败、跳过数量保存在数据库中。设置示例：
 
-| 方法 | 路径 | 当前行为 |
+```json
+{"checkin":{"auto":true,"time":"09:00","timezone":"Asia/Shanghai","regions":["cn","global"]}}
+```
+
+worker 会在指定时区每天指定时间之后创建每区域一个任务，停机期间不会补偿历史日期。任务租约到期后可恢复，但进程崩溃时处于 `pending` 的签到不会自动再次领取，因为上游可能已执行。操作员需核对上游状态；目前没有自动解决未知状态的管理接口。签到按 UTC 日历日防重，跨时区日界附近应避免重复手动操作。
+
+## 网关
+
+| 方法 | 路径 | 行为 |
 | --- | --- | --- |
-| `POST` | `/v1/messages` | 转发 Anthropic Messages；支持不缓冲 SSE 流式转发 |
-| `POST` | `/v1/chat/completions` | 返回 501，OpenAI Chat 转换器未实现 |
-| `POST` | `/v1/responses` | 返回 501，OpenAI Responses 转换器未实现 |
-| `GET` | `/v1/models` | 返回 501；当前无已验证的上游模型发现适配器 |
+| POST | `/v1/messages` | Anthropic 原样转发；支持 SSE 流式透传 |
+| POST | `/v1/messages/count_tokens` | Anthropic token 计数透传 |
+| POST | `/v1/chat/completions` | 纯文本非流式 OpenAI Chat 转换 |
+| POST | `/v1/responses` | 纯文本非流式 OpenAI Responses 转换 |
+| GET | `/v1/models` | 调用已配置区域模型列表 URL；未配置返回 501 |
 
-请求需使用 `Authorization: Bearer <API_KEY>`。Messages 请求按 `x-minimax-region` 选取对应区域内 `enabled=true` 且 `health=healthy` 的账号。找不到可用账号时返回上游错误；后端当前没有公开的账号健康验证端点，因此账号需要由操作员通过可信流程确认，并通过管理 API 更新状态。
+`x-minimax-region: cn|global` 指定上游区域，默认为 `cn`。只选择该区域已启用、已验证的账号。OpenAI 工具、多模态、流式及未列入支持范围的字段会报错，不会被静默忽略；上游非文本块也会报错。`max_tokens` 未提供时转换为 4096。模型名原样传递，不映射、不保证上游确实使用请求的模型。流式请求日志在响应结束后写入；流内容和 token 数不解析。
 
-转发时仅向上游传递必要的 Anthropic 请求头，并使用区域对应的 Mavis LLM 路径。日志记录请求状态、延迟、协议、账号/API Key 引用和已过滤头部；不会将完整请求体写入日志。
+## 签到与数据可信度
 
-## 签到与积分
+签到实现采用官方 CLI 公开的状态和领取路径及签名，需要同一区域兼容 token 和 `real_user_id`，但本项目尚未用真实账号验证。上游可能随时变更。返回奖励标记 `reported`、`arrival: pending`；不写入已确认积分账本。上游计划快照单独存储，不推断钱包余额、API 消费或奖励到账。只有可确认前后余额及实际变动的流水才能满足账本约束 `balance_after = balance_before + delta`。
 
-签到端点首先依据上游返回的当天状态决定是否领取。已领取状态不会重复领取；不可领取状态不会报告成功。领取成功时，只有上游响应包含 `claim_id` 和数值 `points` 才接受结果。
-
-签到响应中的 reward 是上游报告值，账本 certainty 标为 `reported`，arrival 为 `pending`；它不证明余额已到账。余额同步使用 Token Plan remains 上游接口，只接受代码识别的余额字段，并写入 `balance_reconciliation` 快照。快照的流水 delta 为 0，不能解释为 API 使用扣款。
-
-网关日志中的 token usage、估算消耗和实际上游扣款目前不能完整关联；不要把请求数或估算值当作真实积分扣除。
-
-## 错误与状态
-
-- `401`：管理 Token 或网关 Key 缺失/无效。
-- `409`：重复签到尝试或账号唯一性冲突等状态冲突。
-- `422`：字段无效、跨区域分组、签到缺少 `real_user_id` 等。
-- `501`：协议适配或模型发现尚未实现。
-- `502`：上游签到/余额请求失败，或网关上游不可用。
-- `503`：配置缺失或没有满足条件的可用账号。
-
-列表响应的 `source: "live"` 表示数据来自本后端数据库，不意味着该字段已由 MiniMax 上游实时确认。具体可信度以字段、`certainty`、同步时间及本文件的语义为准。
+日志不存请求体；仅记录允许的 Anthropic 标头及认证头的存在情况，值均标记为 `[REDACTED]`。上游错误正文不透传，以免泄露敏感上下文。API Key 明文仅在创建响应出现，数据库只存 SHA-256 摘要。所有管理响应禁止缓存。
