@@ -1,13 +1,13 @@
 # 部署与配置
 
-后端要求 Python 3.11 或更高版本。上游行为尚未用真实账号验证，不要直接暴露到公网。
+后端使用 uv 管理依赖，要求 Python 3.11 或更高版本（默认使用 3.13）。在 `backend/` 下执行 `uv sync --locked --no-dev` 安装生产依赖，并用 `uv run --no-dev` 运行后端命令。上游行为尚未用真实账号验证，不要直接暴露到公网。
 
 本地启动步骤见仓库根目录 [README](../README.md)。用 Docker 时复制根目录的 `.env.example` 为 `.env`，填入 `ENCRYPTION_KEY` 后执行 `docker compose up --build`。
 
 Django 启动时读取 `backend/.env`。`ENCRYPTION_KEY` 丢失或更换后，已保存的账号凭证无法解密，请单独备份。
 
 ```sh
-python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+uv run --no-dev python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
 ```
 
 | 环境变量 | 说明 |
@@ -29,11 +29,12 @@ MODEL_DISCOVERY_URLS='{"cn":"https://trusted.example/v1/models"}'
 
 只填写可信的 HTTPS 地址。这两个配置会收到对应区域的账号凭证。返回的数值只是上游报告的快照，不会被当成钱包余额。
 
-自动签到需要单独运行 `python manage.py checkin_worker --interval 15`。Compose 里的 `checkin-worker` 服务做同样的事。
+自动签到需要在 `backend/` 下单独运行 `uv run --no-dev python manage.py checkin_worker --interval 15`。Compose 里的 `checkin-worker` 服务做同样的事，镜像已将 uv 创建的虚拟环境加入 `PATH`。
 
 验证：
 
 ```sh
 cd backend
-DJANGO_SETTINGS_MODULE=config.settings.test python -m pytest -q
+uv sync --locked
+uv run pytest
 ```

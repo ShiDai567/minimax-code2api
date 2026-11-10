@@ -29,35 +29,33 @@ MiniMax Code 国内版与国际版账号的管理后台，以及 Anthropic / Ope
 
 ### 后端
 
-要求 Python 3.11 或更高版本。
+使用 [uv](https://docs.astral.sh/uv/getting-started/installation/) 管理 Python 和依赖，要求 Python 3.11 或更高版本（默认使用 3.13）。`uv sync` 会自动创建 `.venv` 并安装锁定的依赖及开发工具，无需手动激活虚拟环境。
 
 ```bash
 cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync --locked
 ```
 
 生成密钥并导出运行所需的变量：
 
 ```bash
-python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+uv run python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
 export ENCRYPTION_KEY=上一步的输出
-export ADMIN_TOKEN=$(python -c 'import secrets; print(secrets.token_urlsafe(32))')
+export ADMIN_TOKEN=$(uv run python -c 'import secrets; print(secrets.token_urlsafe(32))')
 export CONSOLE_PASSWORD=设置一个密码
 ```
 
 不设置 `DATABASE_URL` 时使用 `backend/db.sqlite3`。
 
 ```bash
-python manage.py migrate
-uvicorn config.asgi:application --host 127.0.0.1 --port 8045
+uv run python manage.py migrate
+uv run uvicorn config.asgi:application --host 127.0.0.1 --port 8045
 ```
 
 另开一个终端运行自动签到：
 
 ```bash
-python manage.py checkin_worker --interval 15
+uv run python manage.py checkin_worker --interval 15
 ```
 
 健康检查是 `http://127.0.0.1:8045/health`。页面登录只需要 `CONSOLE_PASSWORD`。脚本可以直接用 `Authorization: Bearer $ADMIN_TOKEN`。网关请求用管理界面创建的 API Key，与管理端凭证不通用。
@@ -66,8 +64,10 @@ python manage.py checkin_worker --interval 15
 
 ```bash
 cd backend
-DJANGO_SETTINGS_MODULE=config.settings.test python -m pytest -q
+uv run pytest
 ```
+
+依赖声明在 `backend/pyproject.toml`，解析结果锁定在 `backend/uv.lock`，两者需要一起提交。在 `backend/` 下使用 `uv add 包名` 添加运行依赖、`uv add --dev 包名` 添加开发依赖、`uv remove 包名` 删除依赖。更新依赖时运行 `uv lock --upgrade`，再执行 `uv sync --locked` 和测试。生产环境使用 `uv sync --locked --no-dev`；Docker 构建也使用相同的锁文件。
 
 ### 前端
 

@@ -1,0 +1,22 @@
+[project]
+name = "minimax-code2api-backend"
+version = "0.1.0"
+description = "MiniMax Code account management API and protocol gateway"
+requires-python = ">=3.11"
+dependencies = [
+    "Django>=5.1,<5.3",
+    "djangorestframework>=3.15,<3.17",
+    "django-environ>=0.11,<0.13",
+    "django-cors-headers>=4.6,<5",
+    "drf-spectacular>=0.27,<0.29",
+    "httpx>=0.28,<1",
+    "cryptography>=44,<47",
+    "PyMySQL>=1.1,<2",
+    "uvicorn>=0.32,<1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<10",
+    "pytest-django>=4.9,<5",
+]
