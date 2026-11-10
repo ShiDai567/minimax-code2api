@@ -1,0 +1,59 @@
+services:
+  mysql:
+    image: mysql:8.0
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    environment:
+      MYSQL_DATABASE: code2api
+      MYSQL_USER: code2api
+      MYSQL_PASSWORD: code2api
+      MYSQL_ROOT_PASSWORD: rootpw
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-ucode2api", "-pcode2api"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: mysql://code2api:code2api@mysql:3306/code2api
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-only-change-me-not-for-production-use-32}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      CONSOLE_PASSWORD: ${CONSOLE_PASSWORD:-}
+      GATEWAY_HOST: 0.0.0.0
+      GATEWAY_PORT: 8045
+    ports:
+      - "8045:8045"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  checkin-worker:
+    build: ./backend
+    command: ["python", "manage.py", "checkin_worker", "--interval", "15"]
+    environment:
+      DATABASE_URL: mysql://code2api:code2api@mysql:3306/code2api
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-only-change-me-not-for-production-use-32}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY}
+    depends_on:
+      backend:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8045}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  mysql-data:

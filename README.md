@@ -1,63 +1,73 @@
 # MiniMax Code2API
 
-> **开发状态更新：** 后端具备账号、分组、密钥、签到任务和有限协议网关；上游尚未使用真实凭证验证，前端仍为模拟页面。具体能力与限制请以 [后端开发状态](backend/README.md) 为准。
+MiniMax Code 国内版与国际版账号的管理后台，以及 Anthropic / OpenAI 协议网关。
 
-MiniMax Code 国内版与国际版账号管理及协议网关。仓库包含 Next.js 管理界面和 Flask 后端；当前项目仍在开发中，前端页面主要使用本地 mock 数据，尚未完成与后端的逐页联调。
+后端是 Django 5 + Django REST framework，前端是 Next.js 16。页面直接读取管理 API，不再使用 mock 数据。未核实的上游能力（余额、模型发现、token 刷新）会返回明确错误，不会被伪装成成功。
 
 ## 功能与状态
 
 | 能力 | 当前状态 |
 | --- | --- |
-| 国内版 (`cn`) / 国际版 (`global`) 账号、分组隔离 | 后端已实现基础 CRUD；两区域独立存储 |
-| 账号凭证 | Fernet 加密后存储；列表只返回脱敏值 |
-| API Key | 仅创建成功时返回明文；数据库仅存 SHA-256 摘要 |
-| Anthropic Messages 网关 | 后端转发及 SSE 流式响应已实现；需要已验证且健康的账号 |
-| OpenAI Chat Completions / Responses | 仅纯文本非流式转换；其他输入明确拒绝 |
-| 模型发现 (`GET /v1/models`) | 需管理员配置已验证的区域模型列表 URL；默认返回 HTTP 501 |
-| 手动签到 | 根据官方 CLI 协议实现；需要兼容 Bearer token 和 `real_user_id`，尚未实测 |
-| Token Plan 余额同步 | 需配置已验证的区域适配器；快照不代表 API 消耗或通用钱包余额 |
-| 自动/批量签到、定时任务 | 数据库任务队列与独立 worker 已实现；需要另外运行 worker |
-| 前端到后端联调 | API client 已创建，页面仍主要读取 mock 数据 |
-
-签到成功不代表积分已到账。签到返回的奖励只按上游响应记录为 `reported`；配置的计划快照不构成积分到账对账，网关请求消耗不会伪装成上游实际扣款。
+| 国内版 (`cn`) / 国际版 (`global`) 账号、分组 | 分开存储、分开查询，仪表盘可以汇总 |
+| 账号凭证 | Fernet 加密存储，列表只返回脱敏值 |
+| API Key | 只在创建成功时返回明文，数据库只存 SHA-256 摘要 |
+| Anthropic Messages 网关 | 转发与 SSE 已实现，需要已验证且健康的账号 |
+| OpenAI Chat / Responses | 只做纯文本转换，不支持的字段返回 400 |
+| 模型发现 | 只有配置了已核实的 `MODEL_DISCOVERY_URLS` 才可用，否则返回 501 |
+| 手动与批量签到 | 已实现；签到成功不等于积分到账 |
+| 余额同步 | 只有配置了已核实的 `BALANCE_ADAPTERS` 才记账 |
+| 自动签到 | `manage.py checkin_worker` 按数据库租约执行，失败不会被重复回放 |
 
 ## 仓库结构
 
-- `frontend/`：Next.js 16 App Router、React 19、TypeScript、Tailwind CSS v4 管理界面。
-- `backend/`：Flask 模块化 API、SQLAlchemy、SQLite/MySQL 兼容的数据层、Alembic 迁移及上游 provider。
-- `docs/`：API、部署和安全说明。
-- `AGENTS.md`：仓库开发约束及领域规则。
+- `frontend/`：Next.js 16 App Router 管理界面，数据经 `src/lib/api.ts` 读取。
+- `backend/`：Django 项目。应用在 `apps/`，上游适配器在 `adapters/`，业务逻辑在 `services/`。
+- `docker-compose.yml`：MySQL 8.0、后端、签到 worker、前端。
+- `API_SPEC.md`、`DATABASE_SCHEMA.md`、`BACKEND_PLAN.md`、`INTEGRATION_PLAN.md`：接口与数据约定。
 
 ## 本地开发
 
 ### 后端
 
-要求 Python 3.12 或更高版本。
+要求 Python 3.11 或更高版本。
 
 ```bash
 cd backend
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env
 ```
 
-生成 Fernet 密钥：
+生成密钥并导出运行所需的变量：
 
 ```bash
 python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+export ENCRYPTION_KEY=上一步的输出
+export ADMIN_TOKEN=$(python -c 'import secrets; print(secrets.token_urlsafe(32))')
+export CONSOLE_PASSWORD=设置一个密码
 ```
 
-将生成值写入 `backend/.env` 的 `ENCRYPTION_KEY`，同时设置高熵 `ADMIN_TOKEN`。然后初始化数据库并启动：
+不设置 `DATABASE_URL` 时使用 `backend/db.sqlite3`。
 
 ```bash
-flask --app wsgi db upgrade
-flask --app wsgi run --host 127.0.0.1 --port 8045
+python manage.py migrate
+uvicorn config.asgi:application --host 127.0.0.1 --port 8045
 ```
 
-健康检查为 `http://127.0.0.1:8045/health`。管理端请求使用 `Authorization: Bearer $ADMIN_TOKEN`；网关请求使用管理界面创建的 API Key。
+另开一个终端运行自动签到：
 
-自动签到和批量任务需要另开一个终端运行 `flask --app wsgi worker`，配置细节和限制见 [部署说明](docs/deployment.md)。
+```bash
+python manage.py checkin_worker --interval 15
+```
+
+健康检查是 `http://127.0.0.1:8045/health`。页面登录只需要 `CONSOLE_PASSWORD`。脚本可以直接用 `Authorization: Bearer $ADMIN_TOKEN`。网关请求用管理界面创建的 API Key，与管理端凭证不通用。
+
+测试：
+
+```bash
+cd backend
+DJANGO_SETTINGS_MODULE=config.settings.test python -m pytest -q
+```
 
 ### 前端
 
@@ -67,31 +77,24 @@ npm install
 npm run dev
 ```
 
-开发站点默认地址为 `http://localhost:3000`。`NEXT_PUBLIC_API_BASE_URL` 可用于配置 API client 指向的后端地址，但当前页面尚未全面使用该 client。不要将管理端 `ADMIN_TOKEN` 放入 `NEXT_PUBLIC_*` 环境变量或浏览器代码。
-
-## 验证
+开发站点是 `http://localhost:3000`，默认请求 `http://127.0.0.1:8045`。用 `NEXT_PUBLIC_API_BASE_URL` 修改地址。这个变量会进入浏览器包，不能放任何密钥。
 
 ```bash
-cd backend
-.venv/bin/python -m pytest -q
-.venv/bin/python -m compileall -q app tests migrations
-```
-
-```bash
-cd frontend
 npm run lint
 npx tsc --noEmit
 npm run build
 ```
 
-## 文档
+## Docker Compose
 
-- [后端 API 与数据语义](docs/api.md)
-- [部署与配置](docs/deployment.md)
-- [安全说明与能力边界](docs/security-and-limitations.md)
-- [后端开发说明](backend/README.md)
-- [前端开发说明](frontend/README.md)
+复制 `.env.example` 为 `.env`，填入 `ENCRYPTION_KEY` 后再启动：
+
+```bash
+docker compose up --build
+```
+
+前端在 `http://localhost:3000`，后端在 `http://localhost:8045`。
 
 ## 重要说明
 
-MiniMax Code 登录令牌和签到端点属于上游实现细节，不是稳定的通用公开 API。此项目不实现桌面端本地 auth-lease broker；操作者需要自行安全地提供兼容的 Bearer token。不要把真实凭证提交到仓库、日志或工单中。外网部署前必须配置 TLS、访问控制和密钥管理，并评估上游条款及凭证授权范围。
+MiniMax Code 的登录令牌和签到端点是上游实现细节，不是稳定的公开 API。本项目不实现桌面端的 auth-lease broker，操作者需要自己提供兼容的 Bearer token。不要把真实凭证提交到仓库、日志或工单中。

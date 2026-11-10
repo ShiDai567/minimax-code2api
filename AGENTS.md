@@ -1,9 +1,10 @@
 # AGENTS.md
 
-## 仓库现状（2026-11-01 核实）
+## 仓库现状（2026-11-10 核实）
 
 - 前端代码全部放在 `frontend/` 下，当前实现是 Next.js 16 App Router + React 19 + TypeScript + Tailwind CSS v4 + Lucide React；依赖和脚本以 `frontend/package.json` 为准。
-- 当前没有后端、API 文档或 CI。页面使用 `frontend/src/lib/mock.ts` 的可替换 mock 数据层；不要把模拟值当成真实业务数据，也不要凭空添加后端接口。
+- 后端在 `backend/`，Django 5 + Django REST framework + MySQL 8.0（开发环境可用 SQLite）。页面经 `frontend/src/lib/api.ts` 读取 `/api/v1/`，不再使用 mock 数据。
+- 未核实的上游能力不要编造成可用：余额同步、模型发现、token 刷新在缺少已核实配置时必须返回明确错误。
 
 ## 开发命令
 
@@ -49,9 +50,9 @@ MiniMax Code2API：用于统一管理 MiniMax Code 国内版和国际版账号�
 
 ## 数据层
 
-- 所有数据访问都经过一个 API service adapter，由 mock 实现在背后支撑，这样以后接入真实后端时不需要改页面代码。
-- 每个数据都要区分 real、mock 和 unknown 三种状态，界面上要明确标出 mock 数据。
-- mock 数据的账目必须平衡：`变动后余额 = 变动前余额 ± 变动积分`，每个账号的余额要与签到获得和 API 消耗相符，请求日志里的积分要与积分流水对应。
+- 所有数据访问都经过 `frontend/src/lib/api.ts`，页面不直接拼请求。接入新接口时先改这里，再改页面。
+- 响应带 `source`。未核实或未同步的数值用 `null` 表示，界面显示“未知”，不要用 0 代替。
+- 账目必须平衡：`balance_after = balance_before + delta`。签到成功本身不产生流水，只有余额同步确认差额后才入账。
 - 凭证默认脱敏：Token 不在列表里展示，API Key 的完整值只在创建成功时显示一次，请求头里的敏感字段在日志详情中脱敏。
 
 ## 交互规则

@@ -79,10 +79,14 @@ export interface AccountGroup {
   createdAt: number;
 }
 
+export type GroupStrategy = "round_robin" | "most_credits" | "recent_active" | "least_used";
+
 export interface AccountGroupRow extends AccountGroup {
+  strategy: GroupStrategy;
   accountCount: number;
   healthyCount: number;
-  balance: number;
+  /** `null` until a balance adapter confirms it. */
+  balance: number | null;
 }
 
 /* ───────────── Check-in & credits ───────────── */
@@ -335,6 +339,8 @@ export interface RegionSummary {
   checkedIn: number;
   awaitingCheckin: number;
   balance: number;
+  /** False when no account in the region has a confirmed balance. */
+  balanceKnown: boolean;
   /** Accounts whose balance is unknown or stale */
   unsyncedBalances: number;
   consumption7d: { label: string; value: number }[];
@@ -355,14 +361,18 @@ export interface DashboardData {
     "state" | "totalRequests" | "successRate" | "avgLatencyMs" | "inflight" | "errors24h" | "startedAt"
   >;
   activity: ActivityEvent[];
+  /** Confirmed ledger movement only. Empty until a balance sync posts entries. */
+  trend: CreditPoint[];
 }
 
 export interface CreditsSummary {
   totalBalance: number;
+  unconfirmedAccounts: number;
   earnedToday: number;
   consumedToday: number;
   earnedAllTime: number;
   consumedAllTime: number;
+  certainty: "confirmed";
 }
 
 export interface CheckinSummary {
@@ -384,6 +394,9 @@ export interface Capabilities {
   credits: boolean;
   multiAccount: boolean;
   runtimeLogs: boolean;
+  /** True only when MODEL_DISCOVERY_URLS is configured. */
+  modelDiscovery: boolean;
+  tokenRefresh: boolean;
 }
 
 export interface Page<T> {

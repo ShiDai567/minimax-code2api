@@ -1,0 +1,41 @@
+from django.urls import path
+
+from apps.accounts.views import (
+    AccountCheckinView,
+    AccountDetailView,
+    AccountImportView,
+    AccountListView,
+    BulkDeleteView,
+    DisableView,
+    EnableView,
+    GroupDetailView,
+    GroupListView,
+    SyncCreditsView,
+    VerifyView,
+)
+
+urlpatterns = [
+    path("accounts", AccountListView.as_view()),
+    path("accounts/", AccountListView.as_view()),
+    path("accounts/import", AccountImportView.as_view()),
+    path("accounts/import/", AccountImportView.as_view()),
+    path("accounts/bulk-delete", BulkDeleteView.as_view()),
+    path("accounts/bulk-delete/", BulkDeleteView.as_view()),
+    path("accounts/<int:account_id>", AccountDetailView.as_view()),
+    path("accounts/<int:account_id>/", AccountDetailView.as_view()),
+    path("accounts/<int:account_id>/verify", VerifyView.as_view()),
+    path("accounts/<int:account_id>/verify/", VerifyView.as_view()),
+    path("accounts/<int:account_id>/checkin", AccountCheckinView.as_view()),
+    path("accounts/<int:account_id>/checkin/", AccountCheckinView.as_view()),
+    path("accounts/<int:account_id>/sync-credits", SyncCreditsView.as_view()),
+    path("accounts/<int:account_id>/sync-credits/", SyncCreditsView.as_view()),
+    path("accounts/<int:account_id>/balance-sync", SyncCreditsView.as_view()),
+    path("accounts/<int:account_id>/enable", EnableView.as_view()),
+    path("accounts/<int:account_id>/enable/", EnableView.as_view()),
+    path("accounts/<int:account_id>/disable", DisableView.as_view()),
+    path("accounts/<int:account_id>/disable/", DisableView.as_view()),
+    path("groups", GroupListView.as_view()),
+    path("groups/", GroupListView.as_view()),
+    path("groups/<int:group_id>", GroupDetailView.as_view()),
+    path("groups/<int:group_id>/", GroupDetailView.as_view()),
+]
